@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>영업 활동 일정표</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root {
+  --bg: #f0f2f5;
+  --surface: #ffffff;
+  --border: #e4e7ec;
+  --text: #111827;
+  --text-sub: #6b7280;
+  --primary: #3b82f6;
+  --primary-light: #eff6ff;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --success: #10b981;
+  --radius: 10px;
+  --shadow: 0 1px 4px rgba(0,0,0,.08);
+  --header-h: 54px;
+  --nav-h: 60px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Malgun Gothic',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+/* ── Loading ── */
+#loading{position:fixed;inset:0;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:999}
+.spin{width:38px;height:38px;border:3px solid #e5e7eb;border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Header ── */
+.hdr{position:sticky;top:0;z-index:50;height:var(--header-h);background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:8px}
+.hdr-title{font-size:15px;font-weight:800;white-space:nowrap;letter-spacing:-.3px}
+.period-nav{flex:1;display:flex;align-items:center;justify-content:center;gap:6px}
+.period-nav button{background:none;border:none;cursor:pointer;padding:4px 10px;font-size:20px;color:var(--text);border-radius:6px;line-height:1}
+.period-nav button:active{background:var(--bg)}
+.period-lbl{font-size:14px;font-weight:700;min-width:72px;text-align:center}
+.hdr-btn{background:none;border:none;cursor:pointer;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:19px;position:relative}
+.hdr-btn:active{background:var(--bg)}
+.nbadge{position:absolute;top:2px;right:2px;background:var(--danger);color:#fff;font-size:9px;font-weight:800;min-width:15px;height:15px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 2px}
+
+/* ── Bottom Nav ── */
+.bnav{position:fixed;bottom:0;left:0;right:0;height:var(--nav-h);background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:50}
+.bnav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:none;background:none;cursor:pointer;color:var(--text-sub);font-size:10px;font-family:inherit;position:relative;padding-bottom:2px}
+.bnav-item.on{color:var(--primary)}
+.bnav-icon{font-size:21px;line-height:1}
+
+/* ── Pages ── */
+.page{display:none;padding:14px;padding-bottom:calc(var(--nav-h)+14px);max-width:960px;margin:0 auto}
+.page.on{display:block}
+.pg-title{font-size:17px;font-weight:800;margin-bottom:14px}
+
+/* ── Legend ── */
+.legend{display:flex;flex-wrap:wrap;gap:8px;background:var(--surface);border-radius:var(--radius);padding:10px 12px;box-shadow:var(--shadow);margin-bottom:12px}
+.lg-item{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600}
+.lg-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+
+/* ── Calendar ── */
+.cal-wrap{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.cal-hdr{display:grid;grid-template-columns:repeat(7,1fr);background:#f9fafb;border-bottom:1px solid var(--border)}
+.ch{padding:7px 3px;text-align:center;font-size:11px;font-weight:700;color:var(--text-sub)}
+.ch.sun{color:#ef4444}.ch.sat{color:#3b82f6}
+.cal-body{display:flex;flex-direction:column}
+.cal-week{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--border)}
+.cal-week:last-child{border-bottom:none}
+
+.cell{min-height:88px;padding:4px 3px;border-right:1px solid var(--border);cursor:pointer;position:relative;transition:background .12s}
+.cell:last-child{border-right:none}
+.cell:active{background:#f5f5f5}
+.cell.out{background:#fafafa;cursor:default;opacity:.45}
+.cell.out:active{background:#fafafa}
+.cell.today{outline:2px solid var(--primary);outline-offset:-2px}
+.cell.holiday{background:#fff5f5!important}
+.cell.sunday .dnum{color:#ef4444}
+.cell.saturday .dnum{color:#3b82f6}
+.cell.holiday .dnum{color:#ef4444}
+
+.dnum{font-size:11px;font-weight:700;margin-bottom:1px}
+.hname{font-size:9px;color:#ef4444;margin-bottom:2px;line-height:1.2}
+.cteam{font-size:11px;font-weight:800;margin-bottom:1px;line-height:1.2}
+.cmembers{font-size:9px;color:rgba(0,0,0,.65);line-height:1.35;margin-bottom:2px}
+.cbadges{display:flex;flex-wrap:wrap;gap:2px;margin-top:1px}
+
+.badge{font-size:9px;padding:1px 4px;border-radius:3px;font-weight:700;white-space:nowrap}
+.b-dayoff{background:#dcfce7;color:#166534}
+.b-ham{background:#dbeafe;color:#1d4ed8}
+.b-hpm{background:#ede9fe;color:#5b21b6}
+.b-carried{background:#fef3c7;color:#92400e}
+.b-warn{background:#fee2e2;color:#991b1b}
+.b-vol{background:#f0fdf4;color:#14532d}
+
+@media(max-width:480px){
+  .cell{min-height:68px}
+  .cmembers{display:none}
+}
+
+/* ── FAB ── */
+.fab{position:fixed;bottom:calc(var(--nav-h)+14px);right:16px;width:48px;height:48px;border-radius:50%;background:var(--primary);color:#fff;border:none;cursor:pointer;font-size:20px;box-shadow:0 4px 12px rgba(59,130,246,.4);display:flex;align-items:center;justify-content:center;z-index:40;transition:transform .15s}
+.fab:active{transform:scale(.93)}
+
+/* ── Notifications ── */
+.notif-item{background:var(--surface);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px;box-shadow:var(--shadow);display:flex;gap:10px;align-items:flex-start}
+.notif-item.unread{border-left:3px solid var(--primary)}
+.ni-icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.ni-body{flex:1;min-width:0}
+.ni-msg{font-size:13px;line-height:1.45;margin-bottom:3px}
+.ni-time{font-size:11px;color:var(--text-sub)}
+.ni-readbtn{background:none;border:none;cursor:pointer;color:var(--text-sub);font-size:16px;padding:0 2px;flex-shrink:0}
+.empty{text-align:center;padding:52px 16px;color:var(--text-sub)}
+.empty-ico{font-size:44px;margin-bottom:10px}
+.empty-txt{font-size:13px}
+
+/* ── Settings ── */
+.sec{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden}
+.sec-hdr{padding:12px 14px;font-size:13px;font-weight:800;background:#f9fafb;border-bottom:1px solid var(--border);letter-spacing:.2px}
+.sec-body{padding:14px}
+
+.tcard{border:1px solid var(--border);border-radius:8px;padding:11px;margin-bottom:10px}
+.tcard-top{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+.t-dot{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid rgba(0,0,0,.1);flex-shrink:0;position:relative}
+.t-color-inp{opacity:0;position:absolute;inset:0;cursor:pointer;border-radius:50%}
+.t-name{flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:13px;font-weight:700;font-family:inherit;min-width:0}
+.t-toggle{background:none;border:1px solid var(--border);border-radius:6px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
+.t-toggle.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+.chip{display:flex;align-items:center;gap:3px;background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:3px 9px;font-size:12px}
+.chip button{background:none;border:none;cursor:pointer;color:#aaa;font-size:13px;padding:0;line-height:1}
+
+.addrow{display:flex;gap:5px}
+.addrow input{flex:1;border:1px solid var(--border);border-radius:6px;padding:7px 9px;font-size:13px;font-family:inherit;min-width:0}
+
+.lrow{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border)}
+.lrow:last-child{border-bottom:none}
+.lrow-info{flex:1;min-width:0}
+.lrow-t{font-size:13px;font-weight:700}
+.lrow-s{font-size:11px;color:var(--text-sub);margin-top:1px}
+
+/* ── Buttons ── */
+.btn{border:none;border-radius:7px;padding:9px 14px;font-size:13px;cursor:pointer;font-weight:700;font-family:inherit;line-height:1;transition:opacity .12s}
+.btn:active{opacity:.8}
+.btn-p{background:var(--primary);color:#fff}
+.btn-d{background:var(--danger);color:#fff}
+.btn-g{background:var(--bg);color:var(--text);border:1px solid var(--border)}
+.btn-sm{padding:5px 9px;font-size:11px}
+.btn-full{width:100%;padding:11px;font-size:14px}
+
+/* ── Overlay / Sheet ── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:flex-end}
+.overlay.open{display:flex}
+@media(min-width:640px){.overlay{align-items:center;justify-content:center}}
+
+.sheet{background:var(--surface);width:100%;border-radius:16px 16px 0 0;max-height:88vh;overflow-y:auto;padding:18px 16px 28px}
+@media(min-width:640px){.sheet{width:460px;border-radius:14px;max-height:82vh}}
+
+.sh-handle{width:34px;height:4px;background:#ddd;border-radius:2px;margin:-4px auto 14px;display:block}
+@media(min-width:640px){.sh-handle{display:none}}
+.sh-title{font-size:15px;font-weight:800;margin-bottom:14px}
+
+.fg{margin-bottom:12px}
+.fl{display:block;font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}
+.fsel,.finp{width:100%;border:1px solid var(--border);border-radius:7px;padding:9px 11px;font-size:13px;background:var(--surface);color:var(--text);font-family:inherit}
+
+.radio-g{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.radio-g.three{grid-template-columns:1fr 1fr 1fr}
+.ropt{border:2px solid var(--border);border-radius:8px;padding:9px 6px;cursor:pointer;text-align:center;font-size:12px;font-weight:700;transition:all .12s;line-height:1.4}
+.ropt small{font-size:10px;font-weight:400;opacity:.7}
+.ropt.on{border-color:var(--primary);background:var(--primary-light);color:var(--primary)}
+
+.sh-acts{display:flex;gap:7px;margin-top:16px}
+.sh-acts .btn{flex:1;padding:12px}
+
+.warn-box{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:11px 12px;margin-bottom:12px}
+.warn-box-title{font-size:12px;font-weight:800;color:#92400e;margin-bottom:3px}
+.warn-box-sub{font-size:11px;color:#78350f}
+
+/* ── Dayoff Sheet ── */
+.do-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+.do-row:last-child{border-bottom:none}
+.do-name{font-size:13px;font-weight:700;min-width:60px}
+.do-status{flex:1;font-size:12px;color:var(--text-sub)}
+.do-date{font-size:12px;color:var(--text);font-weight:600}
+
+/* ── Member checkboxes ── */
+.mem-checks{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
+.mem-check{display:flex;align-items:center;gap:4px;background:var(--bg);border:1.5px solid var(--border);border-radius:20px;padding:4px 10px;cursor:pointer;font-size:12px;font-weight:600;transition:all .12s}
+.mem-check.on{background:var(--primary-light);border-color:var(--primary);color:var(--primary)}
+.mem-check input{display:none}
+
+/* ── Comp per member ── */
+.comp-member-block{background:#f8f9ff;border:1px solid #dbeafe;border-radius:8px;padding:10px;margin-top:6px}
+.cmb-name{font-size:12px;font-weight:800;color:var(--primary);margin-bottom:8px}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:calc(var(--nav-h)+16px);left:50%;transform:translateX(-50%) translateY(8px);background:#1f2937;color:#fff;padding:9px 18px;border-radius:20px;font-size:12px;z-index:400;opacity:0;transition:all .25s;white-space:nowrap;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── Info box ── */
+.info-box{background:var(--primary-light);border:1px solid #bfdbfe;border-radius:8px;padding:11px 13px;margin-bottom:12px;font-size:12px;color:#1d4ed8;line-height:1.5}
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading">
+  <div class="spin"></div>
+  <div style="font-size:13px;color:#9ca3af">데이터 불러오는 중...</div>
+</div>
+
+<!-- App -->
+<div id="app" style="display:none">
+
+  <!-- Header -->
+  <header class="hdr">
+    <div class="hdr-title">🗓 일정표</div>
+    <div class="period-nav">
+      <button onclick="changePeriod(-1)">‹</button>
+      <span class="period-lbl" id="pLabel">-</span>
+      <button onclick="changePeriod(1)">›</button>
+    </div>
+    <button class="hdr-btn" onclick="goPage('notify')" title="알림">
+      🔔<span class="nbadge" id="nbadge" style="display:none">0</span>
+    </button>
+    <button class="hdr-btn" onclick="goPage('settings')" title="설정">⚙️</button>
+  </header>
+
+  <!-- Calendar Page -->
+  <div id="pg-calendar" class="page on">
+    <div class="legend" id="legend"></div>
+    <div class="cal-wrap">
+      <div class="cal-hdr">
+        <div class="ch sun">일</div><div class="ch">월</div><div class="ch">화</div>
+        <div class="ch">수</div><div class="ch">목</div><div class="ch">금</div>
+        <div class="ch sat">토</div>
+      </div>
+      <div class="cal-body" id="calBody"></div>
+    </div>
+  </div>
+
+  <!-- Notifications Page -->
+  <div id="pg-notify" class="page">
+    <div class="pg-title">🔔 알림</div>
+    <div id="notifList"></div>
+  </div>
+
+  <!-- Settings Page -->
+  <div id="pg-settings" class="page">
+    <div class="pg-title">⚙️ 설정</div>
+
+    <div class="sec">
+      <div class="sec-hdr">영업조 관리</div>
+      <div class="sec-body" id="teamSettings"></div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-hdr">영업일 관리</div>
+      <div class="sec-body">
+        <div id="periodSettings"></div>
+        <button class="btn btn-g btn-full" style="margin-top:8px" onclick="addPeriodPrompt()">+ 영업 월 추가</button>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-hdr">공휴일 관리</div>
+      <div class="sec-body">
+        <div id="holidaySettings"></div>
+        <div class="addrow" style="margin-top:10px">
+          <input type="date" id="hDate" class="finp" style="flex:.9">
+          <input type="text" id="hName" class="finp" style="flex:1.1" placeholder="공휴일 이름">
+          <button class="btn btn-p btn-sm" onclick="addHoliday()">추가</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FAB: 월차 관리 -->
+  <button class="fab" onclick="openDayoffSheet()" title="월차 관리">📋</button>
+
+  <!-- Bottom Nav -->
+  <nav class="bnav">
+    <button class="bnav-item on" id="bn-calendar" onclick="goPage('calendar')">
+      <span class="bnav-icon">📅</span><span>캘린더</span>
+    </button>
+    <button class="bnav-item" id="bn-notify" onclick="goPage('notify')">
+      <span class="bnav-icon">🔔</span><span>알림</span>
+    </button>
+    <button class="bnav-item" id="bn-settings" onclick="goPage('settings')">
+      <span class="bnav-icon">⚙️</span><span>설정</span>
+    </button>
+  </nav>
+</div><!-- /app -->
+
+<!-- Schedule Edit Sheet -->
+<div class="overlay" id="schedOverlay" onclick="overlayClose('schedOverlay',event)">
+  <div class="sheet">
+    <span class="sh-handle"></span>
+    <div class="sh-title" id="schedTitle">배정 편집</div>
+
+    <div class="fg">
+      <label class="fl">영업조</label>
+      <select class="fsel" id="teamSel" onchange="onTeamChange()">
+        <option value="">-- 배정 없음 --</option>
+      </select>
+    </div>
+
+    <div class="fg" id="typeSection">
+      <label class="fl">근무 유형</label>
+      <div id="typeGrid" class="radio-g three"></div>
+    </div>
+
+    <!-- Weekend compensation section -->
+    <div id="compSection" style="display:none">
+      <div class="warn-box">
+        <div class="warn-box-title">⚡ 주말 근무 보상 설정</div>
+        <div class="warn-box-sub">근무자를 선택하고 보상 유형을 지정하세요</div>
+      </div>
+      <div class="fg">
+        <label class="fl">근무한 직원</label>
+        <div class="mem-checks" id="memChecks"></div>
+      </div>
+      <div id="compPerMember"></div>
+    </div>
+
+    <div class="sh-acts">
+      <button class="btn btn-g" onclick="overlayClose('schedOverlay')">취소</button>
+      <button class="btn btn-d btn-sm" id="delBtn" onclick="deleteSchedule()" style="display:none">삭제</button>
+      <button class="btn btn-p" onclick="saveSchedule()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Monthly Dayoff Sheet -->
+<div class="overlay" id="dayoffOverlay" onclick="overlayClose('dayoffOverlay',event)">
+  <div class="sheet">
+    <span class="sh-handle"></span>
+    <div class="sh-title" id="doTitle">이번 달 월차 현황</div>
+    <div class="info-box">📌 직원별 월차 날짜를 지정하세요. 월 1회 제공됩니다.</div>
+    <div id="doContent"></div>
+    <div style="margin-top:14px">
+      <button class="btn btn-g btn-full" onclick="overlayClose('dayoffOverlay')">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CONFIG
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const SUPA_URL = 'https://lhtslsdkyvksbieyilqj.supabase.co';
+const SUPA_KEY = 'sb_publishable_cNMF6YBaIMTdg7JpBR7Tmw_1KbVwqbn';
+const { createClient } = supabase;
+const db = createClient(SUPA_URL, SUPA_KEY);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// STATE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const S = {
+  page: 'calendar',
+  periodKey: null,
+  teams: [],
+  periods: [],
+  holidays: {},       // { 'YYYY-MM-DD': 'name' }
+  schedules: {},      // { 'YYYY-MM-DD': scheduleObj }
+  comps: {},          // { 'YYYY-MM-DD': [compObj,...] }  keyed by comp_date
+  compsByWork: {},    // { 'YYYY-MM-DD': [compObj,...] }  keyed by work_date
+  dayoffs: {},        // { periodKey: { memberName: dayoffObj } }
+  notifs: [],
+};
+
+let editDate = null;         // date string being edited
+let selectedType = 'normal'; // schedule type
+let workedMembers = new Set(); // members who worked this weekend
+let memberCompTypes = {};    // { memberName: { compType, compDate } }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// INIT
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function init() {
+  try {
+    await loadAll();
+    S.periodKey = guessCurrentPeriod();
+    render();
+    setupRealtime();
+    await autoCheckNotifs();
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+  } catch(e) {
+    document.getElementById('loading').innerHTML =
+      `<div style="text-align:center;padding:24px">
+        <div style="font-size:36px;margin-bottom:12px">⚠️</div>
+        <div style="font-size:14px;font-weight:700;margin-bottom:6px">연결 실패</div>
+        <div style="font-size:12px;color:#6b7280;max-width:280px">${e.message}</div>
+        <div style="font-size:11px;color:#9ca3af;margin-top:8px">setup.sql을 Supabase에서 먼저 실행해주세요</div>
+      </div>`;
+  }
+}
+
+async function loadAll() {
+  const [t,p,h,sch,comp,do_,n] = await Promise.all([
+    db.from('teams').select('*').order('sort_order'),
+    db.from('business_periods').select('*').order('start_date'),
+    db.from('holidays').select('*'),
+    db.from('schedules').select('*'),
+    db.from('compensations').select('*'),
+    db.from('monthly_dayoffs').select('*'),
+    db.from('notifications').select('*').order('created_at',{ascending:false}).limit(60),
+  ]);
+  if(t.error) throw t.error;
+  S.teams = t.data||[];
+  S.periods = p.data||[];
+  S.holidays = {};
+  (h.data||[]).forEach(x=>S.holidays[x.date]=x.name);
+  S.schedules = {};
+  (sch.data||[]).forEach(x=>S.schedules[x.date]=x);
+  // Index compensations by comp_date and work_date
+  S.comps = {}; S.compsByWork = {};
+  (comp.data||[]).forEach(x=>{
+    if(x.comp_date){
+      (S.comps[x.comp_date]=S.comps[x.comp_date]||[]).push(x);
+    }
+    (S.compsByWork[x.work_date]=S.compsByWork[x.work_date]||[]).push(x);
+  });
+  // Index dayoffs
+  S.dayoffs = {};
+  (do_.data||[]).forEach(x=>{
+    if(!S.dayoffs[x.period_key]) S.dayoffs[x.period_key]={};
+    S.dayoffs[x.period_key][x.member_name]=x;
+  });
+  S.notifs = n.data||[];
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// REALTIME
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function setupRealtime() {
+  db.channel('rt-sch').on('postgres_changes',{event:'*',schema:'public',table:'schedules'},async()=>{
+    const {data}=await db.from('schedules').select('*');
+    S.schedules={};(data||[]).forEach(x=>S.schedules[x.date]=x);
+    renderCalendar();
+  }).subscribe();
+
+  db.channel('rt-comp').on('postgres_changes',{event:'*',schema:'public',table:'compensations'},async()=>{
+    const {data}=await db.from('compensations').select('*');
+    S.comps={};S.compsByWork={};
+    (data||[]).forEach(x=>{
+      if(x.comp_date)(S.comps[x.comp_date]=S.comps[x.comp_date]||[]).push(x);
+      (S.compsByWork[x.work_date]=S.compsByWork[x.work_date]||[]).push(x);
+    });
+    renderCalendar();
+  }).subscribe();
+
+  db.channel('rt-do').on('postgres_changes',{event:'*',schema:'public',table:'monthly_dayoffs'},async()=>{
+    const {data}=await db.from('monthly_dayoffs').select('*');
+    S.dayoffs={};
+    (data||[]).forEach(x=>{
+      if(!S.dayoffs[x.period_key])S.dayoffs[x.period_key]={};
+      S.dayoffs[x.period_key][x.member_name]=x;
+    });
+    renderCalendar();
+  }).subscribe();
+
+  db.channel('rt-notif').on('postgres_changes',{event:'*',schema:'public',table:'notifications'},async()=>{
+    const {data}=await db.from('notifications').select('*').order('created_at',{ascending:false}).limit(60);
+    S.notifs=data||[];
+    updateBadge();
+    if(S.page==='notify') renderNotifs();
+  }).subscribe();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ROUTING
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function render(){ goPage(S.page); }
+
+function goPage(pg) {
+  S.page=pg;
+  document.querySelectorAll('.page').forEach(e=>e.classList.remove('on'));
+  document.querySelectorAll('.bnav-item').forEach(e=>e.classList.remove('on'));
+  document.getElementById('pg-'+pg).classList.add('on');
+  const bn=document.getElementById('bn-'+pg);
+  if(bn) bn.classList.add('on');
+  if(pg==='calendar') renderCalendar();
+  if(pg==='notify') renderNotifs();
+  if(pg==='settings') renderSettings();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PERIOD
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function guessCurrentPeriod() {
+  if(!S.periods.length) return null;
+  const today=fmtDate(new Date());
+  for(const p of S.periods) if(today>=p.start_date&&today<=p.end_date) return p.period_key;
+  const fut=S.periods.filter(p=>p.start_date>today);
+  return fut.length?fut[0].period_key:S.periods[S.periods.length-1].period_key;
+}
+
+function curPeriod(){ return S.periods.find(p=>p.period_key===S.periodKey)||null; }
+
+function changePeriod(d) {
+  if(!S.periods.length) return;
+  const i=S.periods.findIndex(p=>p.period_key===S.periodKey);
+  const ni=i+d;
+  if(ni>=0&&ni<S.periods.length){ S.periodKey=S.periods[ni].period_key; renderCalendar(); }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CALENDAR RENDER
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function renderCalendar() {
+  const period=curPeriod();
+  if(!period){
+    document.getElementById('calBody').innerHTML='<div style="padding:36px;text-align:center;color:#9ca3af;font-size:13px">영업 월 데이터가 없습니다<br><small>설정에서 영업일을 추가하세요</small></div>';
+    document.getElementById('pLabel').textContent='-';
+    return;
+  }
+  document.getElementById('pLabel').textContent=period.label||period.period_key;
+  renderLegend();
+
+  const sd=parseDt(period.start_date), ed=parseDt(period.end_date);
+  const cs=new Date(sd); while(cs.getDay()!==0) cs.setDate(cs.getDate()-1);
+  const ce=new Date(ed); while(ce.getDay()!==6) ce.setDate(ce.getDate()+1);
+
+  const todayStr=fmtDate(new Date());
+  const body=document.getElementById('calBody');
+  body.innerHTML='';
+
+  const cur=new Date(cs);
+  while(cur<=ce) {
+    const weekEl=document.createElement('div');
+    weekEl.className='cal-week';
+    for(let i=0;i<7;i++){
+      const ds=fmtDate(cur);
+      const dw=cur.getDay();
+      const inP=ds>=period.start_date&&ds<=period.end_date;
+      const isH=!!S.holidays[ds];
+      const isSun=dw===0, isSat=dw===6, isWknd=isSun||isSat;
+
+      const sched=S.schedules[ds];
+      const team=sched?S.teams.find(t=>t.id===sched.team_id):null;
+
+      const cell=document.createElement('div');
+      cell.className='cell'
+        +(!inP?' out':'')
+        +(isSun?' sunday':'')
+        +(isSat?' saturday':'')
+        +(isH?' holiday':'')
+        +(ds===todayStr?' today':'');
+
+      if(team&&inP) cell.style.background=team.color+'44';
+      if(inP) cell.onclick=()=>openSched(ds);
+
+      let html=`<div class="dnum">${cur.getDate()}</div>`;
+      if(isH) html+=`<div class="hname">${S.holidays[ds]}</div>`;
+      if(team&&inP){
+        html+=`<div class="cteam" style="color:${darken(team.color)}">${team.name}</div>`;
+        const mems=team.members||[];
+        if(mems.length) html+=`<div class="cmembers">${mems.join(', ')}</div>`;
+      }
+
+      // Badges
+      const badges=[];
+
+      // Monthly dayoffs on this date
+      const pdo=S.dayoffs[period.period_key]||{};
+      Object.entries(pdo).forEach(([m,d])=>{
+        if(d.dayoff_date===ds&&d.confirmed) badges.push(`<span class="badge b-dayoff">${m} 월차</span>`);
+      });
+
+      // Compensations on this date (comp_date = ds)
+      (S.comps[ds]||[]).forEach(c=>{
+        if(c.comp_type==='half_am') badges.push(`<span class="badge b-ham">${c.member_name} ~13:30</span>`);
+        else if(c.comp_type==='half_pm') badges.push(`<span class="badge b-hpm">${c.member_name} 14:00~</span>`);
+        else if(c.comp_type==='weekend_dayoff') badges.push(`<span class="badge b-dayoff">${c.member_name} 보상휴가</span>`);
+        else if(c.comp_type==='carried') badges.push(`<span class="badge b-carried">${c.member_name} 이월</span>`);
+      });
+
+      // Warning: weekend work without confirmed comp
+      if(isWknd&&sched&&inP){
+        const wcs=S.compsByWork[ds]||[];
+        const team2=S.teams.find(t=>t.id===sched.team_id);
+        if(team2&&(sched.schedule_type==='weekend_single'||sched.schedule_type==='weekend_both')){
+          const mems=team2.members||[];
+          mems.forEach(m=>{
+            const mc=wcs.find(c=>c.member_name===m);
+            if(!mc||!mc.confirmed) badges.push(`<span class="badge b-warn">⚠ ${m}</span>`);
+          });
+        }
+      }
+
+      if(sched&&sched.schedule_type==='volunteer'&&inP)
+        badges.push(`<span class="badge b-vol">자원근무</span>`);
+
+      if(badges.length) html+=`<div class="cbadges">${badges.join('')}</div>`;
+
+      cell.innerHTML=html;
+      weekEl.appendChild(cell);
+      cur.setDate(cur.getDate()+1);
+    }
+    body.appendChild(weekEl);
+  }
+  updateBadge();
+}
+
+function renderLegend(){
+  document.getElementById('legend').innerHTML=
+    S.teams.filter(t=>t.active).map(t=>
+      `<div class="lg-item"><div class="lg-dot" style="background:${t.color}"></div><span>${t.name}</span></div>`
+    ).join('');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SCHEDULE SHEET
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function openSched(ds) {
+  editDate=ds;
+  workedMembers=new Set();
+  memberCompTypes={};
+  const sched=S.schedules[ds];
+  const dt=parseDt(ds);
+  const dw=dt.getDay();
+  const isWknd=dw===0||dw===6;
+  const DAY=['일','월','화','수','목','금','토'];
+
+  document.getElementById('schedTitle').textContent=
+    `${dt.getMonth()+1}월 ${dt.getDate()}일 (${DAY[dw]}) 배정`;
+
+  // Team select
+  const sel=document.getElementById('teamSel');
+  sel.innerHTML='<option value="">-- 배정 없음 --</option>'+
+    S.teams.filter(t=>t.active).map(t=>
+      `<option value="${t.id}" ${sched&&sched.team_id===t.id?'selected':''}>${t.name}</option>`
+    ).join('');
+
+  selectedType=sched?sched.schedule_type:(isWknd?'weekend_single':'normal');
+  renderTypeGrid(isWknd);
+  updateCompSection(isWknd);
+
+  // Pre-populate worked members from existing comps
+  if(sched&&isWknd){
+    const wcs=S.compsByWork[ds]||[];
+    wcs.forEach(c=>{
+      workedMembers.add(c.member_name);
+      memberCompTypes[c.member_name]={compType:c.comp_type,compDate:c.comp_date||''};
+    });
+  }
+
+  document.getElementById('delBtn').style.display=sched?'block':'none';
+  document.getElementById('schedOverlay').classList.add('open');
+}
+
+function renderTypeGrid(isWknd) {
+  const types=isWknd?[
+    {v:'weekend_single',l:'주말 하루',d:'반일 보상'},
+    {v:'weekend_both',  l:'주말 양일',d:'월차 보상'},
+    {v:'volunteer',     l:'자원근무', d:'특별'},
+  ]:[
+    {v:'normal',   l:'정상근무',d:''},
+    {v:'volunteer',l:'자원근무',d:'특별'},
+  ];
+  document.getElementById('typeGrid').innerHTML=types.map(t=>
+    `<div class="ropt ${selectedType===t.v?'on':''}" onclick="selectType('${t.v}',${isWknd})">${t.l}${t.d?`<br><small>${t.d}</small>`:''}</div>`
+  ).join('');
+}
+
+function selectType(v,isWknd){
+  selectedType=v;
+  renderTypeGrid(isWknd);
+  updateCompSection(isWknd);
+}
+
+function onTeamChange(){
+  const dt=parseDt(editDate);
+  const isWknd=dt.getDay()===0||dt.getDay()===6;
+  renderTypeGrid(isWknd);
+  updateCompSection(isWknd);
+}
+
+function updateCompSection(isWknd){
+  const cs=document.getElementById('compSection');
+  if(!isWknd||selectedType==='normal'||selectedType==='volunteer'){
+    cs.style.display='none'; return;
+  }
+  cs.style.display='block';
+  renderMemberChecks();
+}
+
+function renderMemberChecks(){
+  const teamId=parseInt(document.getElementById('teamSel').value);
+  const team=S.teams.find(t=>t.id===teamId);
+  if(!team){document.getElementById('memChecks').innerHTML='<div style="font-size:12px;color:#9ca3af">조를 먼저 선택하세요</div>';return;}
+  const mems=team.members||[];
+  document.getElementById('memChecks').innerHTML=mems.map(m=>
+    `<div class="mem-check ${workedMembers.has(m)?'on':''}" onclick="toggleMem('${m}')"><span>${m}</span></div>`
+  ).join('');
+  renderCompPerMember(mems);
+}
+
+function toggleMem(m){
+  if(workedMembers.has(m)) workedMembers.delete(m); else workedMembers.add(m);
+  const teamId=parseInt(document.getElementById('teamSel').value);
+  const team=S.teams.find(t=>t.id===teamId);
+  renderMemberChecks();
+}
+
+function renderCompPerMember(mems){
+  const isBoth=selectedType==='weekend_both';
+  const compTypes=isBoth?[
+    {v:'weekend_dayoff',l:'보상 월차',d:'전일 휴무'},
+    {v:'carried',l:'다음달 이월',d:'미확정'},
+  ]:[
+    {v:'half_am',l:'오전 반일',d:'~13:30'},
+    {v:'half_pm',l:'오후 반일',d:'14:00~'},
+    {v:'carried',l:'다음달 이월',d:'미확정'},
+  ];
+
+  const nextWd=nextWeekday(editDate);
+  const html=Array.from(workedMembers).map(m=>{
+    if(!memberCompTypes[m]) memberCompTypes[m]={compType:compTypes[0].v,compDate:nextWd};
+    const mc=memberCompTypes[m];
+    return `<div class="comp-member-block">
+      <div class="cmb-name">${m}</div>
+      <div class="fg" style="margin-bottom:8px">
+        <label class="fl">보상 유형</label>
+        <div class="radio-g">${compTypes.map(ct=>
+          `<div class="ropt ${mc.compType===ct.v?'on':''}" onclick="setMC('${m}','type','${ct.v}')">${ct.l}<br><small>${ct.d}</small></div>`
+        ).join('')}</div>
+      </div>
+      ${mc.compType!=='carried'?`
+      <div class="fg" style="margin-bottom:0">
+        <label class="fl">보상 날짜</label>
+        <input type="date" class="finp" value="${mc.compDate||nextWd}" onchange="setMC('${m}','date',this.value)">
+      </div>`:''}
+    </div>`;
+  }).join('');
+
+  document.getElementById('compPerMember').innerHTML=html||
+    (workedMembers.size===0?'<div style="font-size:12px;color:#9ca3af;margin-top:4px">근무한 직원을 선택하면 보상 설정이 표시됩니다</div>':'');
+}
+
+function setMC(m,field,val){
+  if(!memberCompTypes[m]) memberCompTypes[m]={compType:'half_am',compDate:nextWeekday(editDate)};
+  if(field==='type') memberCompTypes[m].compType=val;
+  if(field==='date') memberCompTypes[m].compDate=val;
+  const teamId=parseInt(document.getElementById('teamSel').value);
+  const team=S.teams.find(t=>t.id===teamId);
+  renderCompPerMember(team?team.members||[]:[]);
+}
+
+async function saveSchedule(){
+  const teamId=parseInt(document.getElementById('teamSel').value)||null;
+  const ds=editDate;
+
+  if(!teamId){ await deleteSchedule(); return; }
+
+  const existing=S.schedules[ds];
+  const payload={date:ds,team_id:teamId,schedule_type:selectedType,updated_at:new Date().toISOString()};
+  let err;
+  if(existing) ({error:err}=await db.from('schedules').update(payload).eq('id',existing.id));
+  else ({error:err}=await db.from('schedules').insert(payload));
+  if(err){toast('저장 실패: '+err.message);return;}
+
+  // Save compensation records
+  if(selectedType==='weekend_single'||selectedType==='weekend_both'){
+    const period=curPeriod();
+    const wt=selectedType==='weekend_both'?'both':'single';
+    for(const m of workedMembers){
+      const mc=memberCompTypes[m]||{compType:selectedType==='weekend_both'?'weekend_dayoff':'half_am',compDate:nextWeekday(ds)};
+      const carried=mc.compType==='carried';
+      const compPayload={
+        work_date:ds,member_name:m,period_key:period.period_key,
+        work_type:wt,comp_type:mc.compType,
+        comp_date:carried?null:mc.compDate,
+        confirmed:!carried,
+        carried_to:null,
+      };
+      // Handle carry-over
+      if(carried){
+        const ni=S.periods.findIndex(p=>p.period_key===period.period_key)+1;
+        const np=S.periods[ni];
+        if(np){
+          compPayload.carried_to=np.period_key;
+          await db.from('notifications').insert({
+            notif_type:'carry_over',
+            message:`[${np.label||np.period_key}] ${m}의 주말 보상이 이월되었습니다. 날짜를 확정해주세요.`,
+            target_date:ds,is_read:false,
+          });
+        }
+      }
+      await db.from('compensations').upsert(compPayload,{onConflict:'work_date,member_name'});
+    }
+  }
+
+  toast('저장되었습니다');
+  overlayClose('schedOverlay');
+}
+
+async function deleteSchedule(){
+  const ex=S.schedules[editDate];
+  if(ex){await db.from('schedules').delete().eq('id',ex.id);}
+  toast('배정 삭제됨');
+  overlayClose('schedOverlay');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MONTHLY DAYOFF SHEET
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function openDayoffSheet(){
+  const p=curPeriod();
+  if(!p){toast('영업 월을 먼저 설정하세요');return;}
+  document.getElementById('doTitle').textContent=`${p.label||p.period_key} 월차 현황`;
+  renderDayoffContent();
+  document.getElementById('dayoffOverlay').classList.add('open');
+}
+
+function renderDayoffContent(){
+  const p=curPeriod();
+  const pdo=S.dayoffs[p.period_key]||{};
+  const allMembers=[...new Set(S.teams.filter(t=>t.active).flatMap(t=>t.members||[]))];
+
+  if(!allMembers.length){
+    document.getElementById('doContent').innerHTML='<div style="font-size:13px;color:#9ca3af">활성 직원이 없습니다</div>';
+    return;
+  }
+
+  document.getElementById('doContent').innerHTML=allMembers.map(m=>{
+    const d=pdo[m];
+    const dateVal=d&&d.dayoff_date?d.dayoff_date:'';
+    const confirmed=d&&d.confirmed;
+    return `<div class="do-row">
+      <div class="do-name">${m}</div>
+      <div style="flex:1">
+        <input type="date" class="finp" style="font-size:12px;padding:5px 8px" value="${dateVal}"
+          onchange="saveDayoff('${m}','${p.period_key}',this.value)">
+      </div>
+      ${confirmed?'<span style="font-size:11px;color:var(--success);font-weight:700">✓확정</span>':'<span style="font-size:11px;color:#d1d5db">미설정</span>'}
+    </div>`;
+  }).join('');
+}
+
+async function saveDayoff(member,periodKey,date){
+  if(!date){
+    await db.from('monthly_dayoffs').delete().match({period_key:periodKey,member_name:member});
+    toast(`${member} 월차 삭제됨`);
+  } else {
+    await db.from('monthly_dayoffs').upsert(
+      {period_key:periodKey,member_name:member,dayoff_date:date,confirmed:true},
+      {onConflict:'period_key,member_name'}
+    );
+    toast(`${member} 월차 설정됨`);
+  }
+  // Reload dayoffs
+  const {data}=await db.from('monthly_dayoffs').select('*');
+  S.dayoffs={};
+  (data||[]).forEach(x=>{
+    if(!S.dayoffs[x.period_key])S.dayoffs[x.period_key]={};
+    S.dayoffs[x.period_key][x.member_name]=x;
+  });
+  renderDayoffContent();
+  renderCalendar();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// NOTIFICATIONS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function updateBadge(){
+  const n=S.notifs.filter(x=>!x.is_read).length;
+  const b=document.getElementById('nbadge');
+  b.style.display=n>0?'flex':'none';
+  b.textContent=n>9?'9+':n;
+}
+
+function renderNotifs(){
+  const el=document.getElementById('notifList');
+  if(!S.notifs.length){
+    el.innerHTML='<div class="empty"><div class="empty-ico">🔔</div><div class="empty-txt">알림이 없습니다</div></div>';
+    return;
+  }
+  const ico={carry_over:'↩️',compensation_pending:'⚠️',dayoff_unused:'📅',schedule_incomplete:'❓',duplicate:'🚫'};
+  el.innerHTML=S.notifs.map(n=>
+    `<div class="notif-item ${!n.is_read?'unread':''}">
+      <div class="ni-icon">${ico[n.notif_type]||'📌'}</div>
+      <div class="ni-body">
+        <div class="ni-msg">${n.message}</div>
+        <div class="ni-time">${fmtDT(n.created_at)}</div>
+      </div>
+      ${!n.is_read?`<button class="ni-readbtn" onclick="markRead(${n.id})">✓</button>`:''}
+    </div>`
+  ).join('');
+}
+
+async function markRead(id){
+  await db.from('notifications').update({is_read:true}).eq('id',id);
+  const n=S.notifs.find(x=>x.id===id);
+  if(n) n.is_read=true;
+  updateBadge(); renderNotifs();
+}
+
+async function autoCheckNotifs(){
+  const p=curPeriod();
+  if(!p) return;
+  const today=new Date();
+  const end=parseDt(p.end_date);
+  const daysLeft=Math.floor((end-today)/(86400000));
+
+  if(daysLeft<=7&&daysLeft>=0){
+    const allMems=[...new Set(S.teams.filter(t=>t.active).flatMap(t=>t.members||[]))];
+    const pdo=S.dayoffs[p.period_key]||{};
+    for(const m of allMems){
+      const d=pdo[m];
+      if(!d||!d.confirmed){
+        const exists=S.notifs.some(n=>n.notif_type==='dayoff_unused'&&n.message.includes(m)&&n.message.includes(p.period_key));
+        if(!exists){
+          await db.from('notifications').insert({
+            notif_type:'dayoff_unused',
+            message:`[${p.label||p.period_key}] ${m}의 월차가 미사용 상태입니다. (${daysLeft}일 후 종료)`,
+            is_read:false,
+          });
+        }
+      }
+    }
+  }
+
+  // Check for pending weekend comps (worked 3+ days ago, not confirmed)
+  const threeDaysAgo=new Date(); threeDaysAgo.setDate(threeDaysAgo.getDate()-3);
+  Object.entries(S.compsByWork).forEach(([wd,cs])=>{
+    if(parseDt(wd)<=threeDaysAgo){
+      cs.forEach(async c=>{
+        if(!c.confirmed){
+          const exists=S.notifs.some(n=>n.notif_type==='compensation_pending'&&n.message.includes(c.member_name)&&n.message.includes(wd));
+          if(!exists){
+            await db.from('notifications').insert({
+              notif_type:'compensation_pending',
+              message:`${c.member_name}의 ${wd} 주말 보상이 미확정 상태입니다.`,
+              target_date:wd,is_read:false,
+            });
+          }
+        }
+      });
+    }
+  });
+
+  const {data}=await db.from('notifications').select('*').order('created_at',{ascending:false}).limit(60);
+  S.notifs=data||[];
+  updateBadge();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SETTINGS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function renderSettings(){
+  renderTeamSettings();
+  renderPeriodSettings();
+  renderHolidaySettings();
+}
+
+function renderTeamSettings(){
+  document.getElementById('teamSettings').innerHTML=S.teams.map(t=>`
+    <div class="tcard" id="tc${t.id}">
+      <div class="tcard-top">
+        <div class="t-dot" style="background:${t.color}" title="색상 변경">
+          <input type="color" class="t-color-inp" value="${t.color}" onchange="changeColor(${t.id},this.value)">
+        </div>
+        <input class="t-name" type="text" value="${t.name}" onblur="changeName(${t.id},this.value)" placeholder="조 이름">
+        <button class="t-toggle ${t.active?'on':''}" onclick="toggleActive(${t.id})">${t.active?'활성':'비활성'}</button>
+      </div>
+      <div class="chips" id="chips${t.id}">
+        ${(t.members||[]).map(m=>`
+          <div class="chip"><span>${m}</span><button onclick="removeMember(${t.id},'${m}')">×</button></div>
+        `).join('')}
+      </div>
+      <div class="addrow">
+        <input type="text" id="nm${t.id}" class="finp" placeholder="직원 이름" onkeydown="if(event.key==='Enter')addMember(${t.id})">
+        <button class="btn btn-p btn-sm" onclick="addMember(${t.id})">추가</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function changeColor(id,color){
+  await db.from('teams').update({color}).eq('id',id);
+  const t=S.teams.find(x=>x.id===id);
+  if(t){t.color=color;}
+  document.querySelector(`#tc${id} .t-dot`).style.background=color;
+  renderLegend();
+}
+
+async function changeName(id,name){
+  if(!name.trim()) return;
+  await db.from('teams').update({name:name.trim()}).eq('id',id);
+  const t=S.teams.find(x=>x.id===id);
+  if(t) t.name=name.trim();
+  renderLegend();
+  toast('저장됨');
+}
+
+async function toggleActive(id){
+  const t=S.teams.find(x=>x.id===id);
+  if(!t) return;
+  const nv=!t.active;
+  await db.from('teams').update({active:nv}).eq('id',id);
+  t.active=nv;
+  renderTeamSettings();
+}
+
+async function addMember(id){
+  const inp=document.getElementById('nm'+id);
+  const name=inp.value.trim();
+  if(!name) return;
+  const t=S.teams.find(x=>x.id===id);
+  if(!t) return;
+  const mems=[...(t.members||[]),name];
+  const {error}=await db.from('teams').update({members:mems}).eq('id',id);
+  if(error){toast('오류: '+error.message);return;}
+  t.members=mems; inp.value='';
+  renderTeamSettings(); toast(`${name} 추가됨`);
+}
+
+async function removeMember(id,name){
+  const t=S.teams.find(x=>x.id===id);
+  if(!t) return;
+  const mems=(t.members||[]).filter(m=>m!==name);
+  await db.from('teams').update({members:mems}).eq('id',id);
+  t.members=mems;
+  renderTeamSettings(); toast(`${name} 삭제됨`);
+}
+
+function renderPeriodSettings(){
+  document.getElementById('periodSettings').innerHTML=S.periods.map(p=>`
+    <div class="lrow">
+      <div class="lrow-info">
+        <div class="lrow-t">${p.label||p.period_key}</div>
+        <div class="lrow-s">${p.start_date} ~ ${p.end_date} (${p.work_days}일)</div>
+      </div>
+      <button class="btn btn-g btn-sm" onclick="editPeriod(${p.id})">편집</button>
+      <button class="btn btn-d btn-sm" onclick="delPeriod(${p.id})">삭제</button>
+    </div>
+  `).join('');
+}
+
+function editPeriod(id){
+  const p=S.periods.find(x=>x.id===id);
+  if(!p) return;
+  const label=prompt('이름',p.label||''); if(label===null) return;
+  const start=prompt('시작일 (YYYY-MM-DD)',p.start_date); if(!start) return;
+  const end=prompt('종료일 (YYYY-MM-DD)',p.end_date); if(!end) return;
+  const wd=parseInt(prompt('영업일수',p.work_days))||p.work_days;
+  savePeriod(id,{label,start_date:start,end_date:end,work_days:wd});
+}
+
+async function savePeriod(id,data){
+  const {error}=await db.from('business_periods').update(data).eq('id',id);
+  if(error){toast('오류: '+error.message);return;}
+  const p=S.periods.find(x=>x.id===id);
+  if(p) Object.assign(p,data);
+  renderPeriodSettings(); renderCalendar(); toast('저장됨');
+}
+
+async function delPeriod(id){
+  if(!confirm('이 영업 월을 삭제하시겠습니까?')) return;
+  await db.from('business_periods').delete().eq('id',id);
+  S.periods=S.periods.filter(p=>p.id!==id);
+  renderPeriodSettings();
+}
+
+function addPeriodPrompt(){
+  const key=prompt('영업 월 키 (예: 2026-07)'); if(!key) return;
+  const label=prompt('이름 (예: 7월 영업)')||key;
+  const start=prompt('시작일 (YYYY-MM-DD)'); if(!start) return;
+  const end=prompt('종료일 (YYYY-MM-DD)'); if(!end) return;
+  const wd=parseInt(prompt('영업일수','0'))||0;
+  insertPeriod({period_key:key,label,start_date:start,end_date:end,work_days:wd});
+}
+
+async function insertPeriod(data){
+  const {data:ins,error}=await db.from('business_periods').insert(data).select().single();
+  if(error){toast('오류: '+error.message);return;}
+  S.periods.push(ins);
+  S.periods.sort((a,b)=>a.start_date.localeCompare(b.start_date));
+  renderPeriodSettings(); toast('추가됨');
+}
+
+function renderHolidaySettings(){
+  const sorted=Object.entries(S.holidays).sort(([a],[b])=>a.localeCompare(b));
+  document.getElementById('holidaySettings').innerHTML=sorted.map(([date,name])=>`
+    <div class="lrow">
+      <div class="lrow-info">
+        <div class="lrow-t">${name}</div>
+        <div class="lrow-s">${date}</div>
+      </div>
+      <button class="btn btn-d btn-sm" onclick="delHoliday('${date}')">삭제</button>
+    </div>
+  `).join('');
+}
+
+async function addHoliday(){
+  const date=document.getElementById('hDate').value;
+  const name=document.getElementById('hName').value.trim();
+  if(!date||!name){toast('날짜와 이름을 모두 입력하세요');return;}
+  const {error}=await db.from('holidays').upsert({date,name},{onConflict:'date'});
+  if(error){toast('오류: '+error.message);return;}
+  S.holidays[date]=name;
+  document.getElementById('hDate').value='';
+  document.getElementById('hName').value='';
+  renderHolidaySettings(); renderCalendar(); toast(`${name} 추가됨`);
+}
+
+async function delHoliday(date){
+  if(!confirm(`${S.holidays[date]} 삭제하시겠습니까?`)) return;
+  await db.from('holidays').delete().eq('date',date);
+  delete S.holidays[date];
+  renderHolidaySettings(); renderCalendar();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// UTILS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function fmtDate(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function parseDt(s){const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d);}
+function nextWeekday(ds){
+  const d=parseDt(ds);d.setDate(d.getDate()+1);
+  while(d.getDay()===0||d.getDay()===6) d.setDate(d.getDate()+1);
+  return fmtDate(d);
+}
+function darken(hex){
+  if(!hex||hex.length<7) return '#333';
+  const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return `rgb(${Math.max(0,r-90)},${Math.max(0,g-90)},${Math.max(0,b-90)})`;
+}
+function fmtDT(iso){
+  if(!iso) return '';
+  const d=new Date(iso);
+  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),2400);
+}
+function overlayClose(id,e){
+  if(e&&e.target!==document.getElementById(id)) return;
+  document.getElementById(id).classList.remove('open');
+  if(id==='schedOverlay') editDate=null;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// START
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+init();
+</script>
+</body>
+</html>
