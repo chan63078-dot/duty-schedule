@@ -758,11 +758,9 @@ async function saveSchedule(){
 
   if(!teamId){ await deleteSchedule(); return; }
 
-  const existing=S.schedules[ds];
   const payload={date:ds,team_id:teamId,schedule_type:selectedType,updated_at:new Date().toISOString()};
   let err;
-  if(existing) ({error:err}=await db.from('schedules').update(payload).eq('id',existing.id));
-  else ({error:err}=await db.from('schedules').insert(payload));
+  ({error:err}=await db.from('schedules').upsert(payload,{onConflict:'date'}));
   if(err){toast('저장 실패: '+err.message);return;}
 
   // Save compensation records
